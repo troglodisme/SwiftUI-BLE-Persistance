@@ -15,7 +15,6 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     
     @Published var connectionState: CBPeripheralState = .disconnected //publish peripheral device
 
-    
     var myCentral: CBCentralManager! // Declare a variable for the central manager
     @Published var isSwitchedOn = false // Property to track if Bluetooth is powered on
     @Published var peripherals = [Peripheral]() // Array to store discovered peripherals
@@ -25,16 +24,19 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     // Add this property to store the LED characteristic
     private var ledCharacteristic: CBCharacteristic? // Reference to the LED characteristic
 
-    
     // Air Quality Service UUID
     let airQualityServiceUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdef0")
 
-    // Air Quality Characteristic UUID
-    let pm25CharacteristicUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdef1")
+    // Characteristic UUIDs for different sensor types
+    let particulateCharacteristicUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdea1")
+    let environmentCharacteristicUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdea2")
+    let gasCharacteristicUUID = CBUUID(string: "12345678-1234-5678-1234-56789abcdea3")
 
-    @Published var pm25Value: Float = 0.0
+    // Published properties for all sensor values
+    @Published var particulateData: (pm1: Float, pm25: Float, pm4: Float, pm10: Float) = (0, 0, 0, 0)
+    @Published var environmentalData: (temperature: Float, humidity: Float) = (0, 0)
+    @Published var gasData: (vocIndex: Float, noxIndex: Float, co2: Float) = (0, 0, 0)
 
-    
     //Service UUIDs
     let ledServiceUUID = CBUUID(string: "19B10010-E8F2-537E-4F6C-D104768A1214")
     
@@ -42,13 +44,12 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     let ledCharacteristicUUID = CBUUID(string: "19B10011-E8F2-537E-4F6C-D104768A1214")
     let buttonCharacteristicUUID = CBUUID(string: "19B10012-E8F2-537E-4F6C-D104768A1214")
 
-    
     override init() {
         super.init()
+        print("BLEManager initialized")
         myCentral = CBCentralManager(delegate: self, queue: nil) // Initialize the central manager with self as the delegate
     }
 
-    
     // Called when the Bluetooth state updates (e.g., powered on or off)
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
         isSwitchedOn = central.state == .poweredOn // Update isSwitchedOn based on Bluetooth state
@@ -60,32 +61,6 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     }
     
     // Called when a peripheral is discovered during scanning
-//    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-//        print("Advertisement Data: \(advertisementData)") // Log advertisement data
-//        let newPeripheral = Peripheral(id: peripheral.identifier, name: peripheral.name ?? "Unknown", rssi: RSSI.intValue) // Create a new Peripheral instance
-//        if !peripherals.contains(where: { $0.id == newPeripheral.id }) { // Check if peripheral is already in the list
-//            DispatchQueue.main.async { // Update peripherals list on the main queue
-//                self.peripherals.append(newPeripheral) // Add new peripheral to the list
-//            }
-//        }
-//    }
-    
-    
-//    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-//        let name = peripheral.name ?? "Unknown"
-//        guard name != "Unknown" else {
-//            return // Skip peripherals with name 'Unknown'
-//        }
-//
-////        print("Advertisement Data: \(advertisementData)")
-//        let newPeripheral = Peripheral(id: peripheral.identifier, name: name, rssi: RSSI.intValue, advertisementData: advertisementData)
-//        if !peripherals.contains(where: { $0.id == newPeripheral.id }) {
-//            DispatchQueue.main.async {
-//                self.peripherals.append(newPeripheral)
-//            }
-//        }
-//    }
-    
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
         let name = peripheral.name ?? "Unknown"
         guard name != "Unknown" else { return }
@@ -180,84 +155,100 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     
     // Called when services are discovered on a peripheral
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        print("Services discovered - Count: \(peripheral.services?.count ?? 0)")
         if let services = peripheral.services {
             for service in services {
-                if service.uuid == ledServiceUUID {
-                    print("Found LED Service")
-                    peripheral.discoverCharacteristics([ledCharacteristicUUID, buttonCharacteristicUUID], for: service)
-                } else if service.uuid == airQualityServiceUUID {
-                    print("Found Air Quality Service")
-                    peripheral.discoverCharacteristics([pm25CharacteristicUUID], for: service)
+                print("Found service: \(service.uuid)")
+                if service.uuid == airQualityServiceUUID {
+                    print("Found Air Quality Service - discovering characteristics")
+                    peripheral.discoverCharacteristics(
+                        [particulateCharacteristicUUID, environmentCharacteristicUUID, gasCharacteristicUUID],
+                        for: service
+                    )
                 }
             }
         }
     }
 
-
-//    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-//          if let characteristics = service.characteristics {
-//              for characteristic in characteristics {
-//                  if characteristic.uuid == ledCharacteristicUUID {
-//                      print("Found LED Characteristic")
-//                      self.ledCharacteristic = characteristic // Save the LED characteristic for writing
-//                  } else if characteristic.uuid == buttonCharacteristicUUID {
-//                      print("Found Button Characteristic")
-//                      peripheral.setNotifyValue(true, for: characteristic) // Enable notifications for button changes
-//                  }
-//              }
-//          }
-//      }
-    
+    // Update characteristic discovery
     func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        print("Characteristics discovered for service: \(service.uuid)")
+        print("Characteristics count: \(service.characteristics?.count ?? 0)")
+        
         if let characteristics = service.characteristics {
             for characteristic in characteristics {
-                if characteristic.uuid == ledCharacteristicUUID {
-                    print("Found LED Characteristic")
-                    self.ledCharacteristic = characteristic // Save the LED characteristic for writing
-                } else if characteristic.uuid == buttonCharacteristicUUID {
-                    print("Found Button Characteristic")
-                    peripheral.setNotifyValue(true, for: characteristic) // Enable notifications for button changes
-                } else if characteristic.uuid == pm25CharacteristicUUID {
-                    print("Found pm2.5 Characteristic")
-                    peripheral.setNotifyValue(true, for: characteristic) // Enable notifications for pm2.5 updates
+                print("Found characteristic: \(characteristic.uuid)")
+                if characteristic.uuid == particulateCharacteristicUUID ||
+                   characteristic.uuid == environmentCharacteristicUUID ||
+                   characteristic.uuid == gasCharacteristicUUID {
+                    print("Enabling notifications for: \(characteristic.uuid)")
+                    peripheral.setNotifyValue(true, for: characteristic)
                 }
             }
         }
     }
 
-    
-    // Add toggleLED function to write to the LED characteristic, can be made more general for boolean write
-       func toggleLED(on: Bool) {
-           guard let ledCharacteristic = ledCharacteristic else {
-               print("LED Characteristic not found")
-               return
-           }
-           
-           let value: UInt8 = on ? 1 : 0 // 1 to turn on, 0 to turn off
-           let data = Data([value])
-           connectedPeripheral?.writeValue(data, for: ledCharacteristic, type: .withResponse)
-       }
-    
+    // Update value handling for all characteristics
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        if let error = error {
-            print("Error updating value for characteristic \(characteristic.uuid): \(error.localizedDescription)")
+        guard let data = characteristic.value else { return }
+        
+        switch characteristic.uuid {
+        case particulateCharacteristicUUID:
+            if data.count >= 16 { // 4 Float values * 4 bytes each
+                let values = data.withUnsafeBytes { bytes -> (Float, Float, Float, Float) in
+                    let pm1 = bytes.load(fromByteOffset: 0, as: Float.self)
+                    let pm25 = bytes.load(fromByteOffset: 4, as: Float.self)
+                    let pm4 = bytes.load(fromByteOffset: 8, as: Float.self)
+                    let pm10 = bytes.load(fromByteOffset: 12, as: Float.self)
+                    return (pm1, pm25, pm4, pm10)
+                }
+                DispatchQueue.main.async {
+                    self.particulateData = values
+                    print("Particulate Data - PM1.0: \(values.0), PM2.5: \(values.1), PM4.0: \(values.2), PM10.0: \(values.3)")
+                }
+            }
+            
+        case environmentCharacteristicUUID:
+            if data.count >= 8 { // 2 Float values * 4 bytes each
+                let values = data.withUnsafeBytes { bytes -> (Float, Float) in
+                    let temp = bytes.load(fromByteOffset: 0, as: Float.self)
+                    let humidity = bytes.load(fromByteOffset: 4, as: Float.self)
+                    return (temp, humidity)
+                }
+                DispatchQueue.main.async {
+                    self.environmentalData = values
+                    print("Environmental Data - Temp: \(values.0)°C, Humidity: \(values.1)%")
+                }
+            }
+            
+        case gasCharacteristicUUID:
+            if data.count >= 12 { // 3 Float values * 4 bytes each
+                let values = data.withUnsafeBytes { bytes -> (Float, Float, Float) in
+                    let voc = bytes.load(fromByteOffset: 0, as: Float.self)
+                    let nox = bytes.load(fromByteOffset: 4, as: Float.self)
+                    let co2 = bytes.load(fromByteOffset: 8, as: Float.self)
+                    return (voc, nox, co2)
+                }
+                DispatchQueue.main.async {
+                    self.gasData = values
+                    print("Gas Data - VOC: \(values.0), NOx: \(values.1), CO2: \(values.2)")
+                }
+            }
+            
+        default:
+            break
+        }
+    }
+
+    // Add toggleLED function to write to the LED characteristic, can be made more general for boolean write
+    func toggleLED(on: Bool) {
+        guard let ledCharacteristic = ledCharacteristic else {
+            print("LED Characteristic not found")
             return
         }
         
-        if characteristic.uuid == pm25CharacteristicUUID {
-            if let data = characteristic.value {
-                let pm25Value = data.withUnsafeBytes { $0.load(as: Float.self) }
-                DispatchQueue.main.async {
-                    self.pm25Value = pm25Value
-                    print("Updated pm2.5 Value: \(pm25Value) µg/m³")
-                }
-            }
-        }
+        let value: UInt8 = on ? 1 : 0 // 1 to turn on, 0 to turn off
+        let data = Data([value])
+        connectedPeripheral?.writeValue(data, for: ledCharacteristic, type: .withResponse)
     }
-
-    
-    
-    
-
-
 }

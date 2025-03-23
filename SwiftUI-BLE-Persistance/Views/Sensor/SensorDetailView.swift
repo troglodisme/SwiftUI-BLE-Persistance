@@ -14,8 +14,11 @@ struct SensorDetailView: View {
     @ObservedObject var bleManager: BLEManager
     
     private var isConnected: Bool {
-        sensor.peripheralId == bleManager.connectedPeripheralUUID &&
+        let connected = sensor.peripheralId == bleManager.connectedPeripheralUUID &&
         bleManager.connectionState == .connected
+        print("Connection state check - Sensor peripheralId: \(sensor.peripheralId?.uuidString ?? "nil"), Connected peripheralId: \(bleManager.connectedPeripheralUUID?.uuidString ?? "nil"), State: \(bleManager.connectionState)")
+        print("isConnected: \(connected)")
+        return connected
     }
     
     var body: some View {
@@ -29,40 +32,64 @@ struct SensorDetailView: View {
             
             Section(header: Text("Live Data")) {
                 if isConnected {
-                    HStack {
-                        Text("PM2.5:")
-                        Spacer()
-                        Text("\(bleManager.pm25Value, specifier: "%.1f") μg/m³")
-                            .foregroundColor(.blue)
+                    Group {
+                        Section(header: Text("Particulate Matter")) {
+                            LiveDataRow(label: "PM1.0", value: bleManager.particulateData.pm1, unit: "μg/m³")
+                            LiveDataRow(label: "PM2.5", value: bleManager.particulateData.pm25, unit: "μg/m³")
+                            LiveDataRow(label: "PM4.0", value: bleManager.particulateData.pm4, unit: "μg/m³")
+                            LiveDataRow(label: "PM10", value: bleManager.particulateData.pm10, unit: "μg/m³")
+                        }
+                        
+                        Section(header: Text("Environmental")) {
+                            LiveDataRow(label: "Temperature", value: bleManager.environmentalData.temperature, unit: "°C")
+                            LiveDataRow(label: "Humidity", value: bleManager.environmentalData.humidity, unit: "%")
+                        }
+                        
+                        Section(header: Text("Gas Measurements")) {
+                            LiveDataRow(label: "VOC Index", value: bleManager.gasData.vocIndex, unit: "")
+                            LiveDataRow(label: "NOx Index", value: bleManager.gasData.noxIndex, unit: "")
+                            LiveDataRow(label: "CO2", value: bleManager.gasData.co2, unit: "ppm")
+                        }
+                        
+                        Section {
+                            Button("Store Reading") {
+                                let reading = SensorReading(
+                                    pm1: Double(bleManager.particulateData.pm1),
+                                    pm25: Double(bleManager.particulateData.pm25),
+                                    pm4: Double(bleManager.particulateData.pm4),
+                                    pm10: Double(bleManager.particulateData.pm10),
+                                    temperature: Double(bleManager.environmentalData.temperature),
+                                    humidity: Double(bleManager.environmentalData.humidity),
+                                    vocIndex: Double(bleManager.gasData.vocIndex),
+                                    noxIndex: Double(bleManager.gasData.noxIndex),
+                                    co2: Double(bleManager.gasData.co2)
+                                )
+                                reading.sensor = sensor
+                                sensor.readings.append(reading)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .buttonStyle(.bordered)
+                        }
                     }
                     
-                    Button("Store Reading") {
-                        let reading = SensorReading(
-                            pm25: Double(bleManager.pm25Value),
-                            temperature: 0, // We don't have these values yet
-                            humidity: 0     // We don't have these values yet
-                        )
-                        reading.sensor = sensor
-                        sensor.readings.append(reading)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .buttonStyle(.bordered)
                 } else {
-                    HStack {
-                        Text("Status:")
-                        Spacer()
-                        Text("Disconnected")
-                            .foregroundColor(.red)
-                    }
-                    Button("Connect") {
-                        if let peripheralId = sensor.peripheralId {
-                            let peripheral = Peripheral(
-                                id: peripheralId,
-                                name: sensor.name,
-                                rssi: 0,
-                                advertisementData: [:] // Empty dictionary for reconnection
-                            )
-                            bleManager.connect(to: peripheral)
+                    Section(header: Text("Connection")) {
+                        HStack {
+                            Text("Status:")
+                            Spacer()
+                            Text("Disconnected")
+                                .foregroundColor(.red)
+                        }
+                        Button("Connect") {
+                            if let peripheralId = sensor.peripheralId {
+                                let peripheral = Peripheral(
+                                    id: peripheralId,
+                                    name: sensor.name,
+                                    rssi: 0,
+                                    advertisementData: [:] // Empty dictionary for reconnection
+                                )
+                                bleManager.connect(to: peripheral)
+                            }
                         }
                     }
                 }
@@ -122,6 +149,21 @@ struct SensorDetailView: View {
             if isConnected {
                 bleManager.disconnect()
             }
+        }
+    }
+}
+
+struct LiveDataRow: View {
+    let label: String
+    let value: Float
+    let unit: String
+    
+    var body: some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text("\(value, specifier: "%.1f") \(unit)")
+                .foregroundColor(.blue)
         }
     }
 }
