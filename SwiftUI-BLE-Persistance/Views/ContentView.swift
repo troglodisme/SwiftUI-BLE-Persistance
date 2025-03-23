@@ -11,17 +11,24 @@ import SwiftData
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var sensors: [Sensor]
+    @StateObject private var bleManager = BLEManager()
     @State private var isSheetPresented = false
     
     var body: some View {
         NavigationView {
-            // Your List view and toolbar items remain the same
             List {
                 ForEach(sensors) { sensor in
-                    NavigationLink(destination: SensorDetailView(sensor: sensor)) {
+                    NavigationLink(destination: SensorDetailView(sensor: sensor, bleManager: bleManager)) {
                         VStack(alignment: .leading) {
-                            Text(sensor.name)
-                                .font(.headline)
+                            HStack {
+                                Text(sensor.name)
+                                    .font(.headline)
+                                if let peripheralId = sensor.peripheralId,
+                                   bleManager.connectedPeripheralUUID == peripheralId {
+                                    Image(systemName: "dot.radiowaves.left.and.right")
+                                        .foregroundColor(.green)
+                                }
+                            }
                             Text(sensor.location)
                                 .font(.subheadline)
                             Text("\(sensor.readings.count) readings")
@@ -29,24 +36,13 @@ struct ContentView: View {
                         }
                     }
                 }
+                .onDelete(perform: deleteSensors)
             }
             .navigationTitle("Air Quality Sensors")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: { isSheetPresented.toggle() }) {
                         Image(systemName: "sensor")
-                    }
-                }
-                
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Add Test Data") {
-                        let newSensor = Sensor(name: "New Sensor", location: "Test Location")
-                        modelContext.insert(newSensor)
-                        
-                        // Add some random readings
-                        for _ in 1...3 {
-                            newSensor.addTestReading()
-                        }
                     }
                 }
             }
@@ -56,6 +52,17 @@ struct ContentView: View {
         }
         .onAppear {
             createSampleData(modelContext: modelContext)
+        }
+    }
+    
+    private func deleteSensors(at offsets: IndexSet) {
+        for index in offsets {
+            let sensor = sensors[index]
+            if let peripheralId = sensor.peripheralId,
+               bleManager.connectedPeripheralUUID == peripheralId {
+                bleManager.disconnect()
+            }
+            modelContext.delete(sensor)
         }
     }
 }
@@ -82,4 +89,3 @@ struct SheetListView: View {
         }
     }
 }
-

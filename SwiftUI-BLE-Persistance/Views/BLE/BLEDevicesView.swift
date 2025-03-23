@@ -1,93 +1,83 @@
-//
-//  BLEDevicesView.swift
-//  Swiftui-BLE-Test
-//
-//  Created by Giulio on 08/11/24.
-//
+    //
+    //  BLEDevicesView.swift
+    //  Swiftui-BLE-Test
+    //
+    //  Created by Giulio on 08/11/24.
+    //
 
-import SwiftUI
+    import SwiftUI
 
-struct BLEDevicesView: View {
-    @StateObject var bleManager = BLEManager()
-    @State private var selectedPeripheral: Peripheral?
-    @State private var isSheetPresented = false
+    struct BLEDevicesView: View {
+        @Environment(\.modelContext) private var modelContext
+        @Environment(\.dismiss) var dismiss
+        @StateObject var bleManager = BLEManager()
+        @State private var selectedPeripheral: Peripheral?
 
-    var body: some View {
-        NavigationView {
-            VStack(alignment: .leading) {
-
-//                HStack {
-//                    if bleManager.isSwitchedOn {
-//                        Text("Bluetooth is on")
-//                            .foregroundColor(.green)
-//                    } else {
-//                        Text("Bluetooth is off, switch it on!")
-//                            .foregroundColor(.red)
-//                    }
-//                }
-//                .padding()
-                
-                List(bleManager.peripherals) { peripheral in
-                    HStack {
-                        Text(peripheral.name)
-                        Spacer()
-                        Text(String(peripheral.rssi))
-                        Button(action: {
-                            bleManager.stopScanning() // Stop scanning on selection
-                            bleManager.connect(to: peripheral)
-                            selectedPeripheral = peripheral
-                            isSheetPresented = true // Present the sheet
-                        }) {
-                            if bleManager.connectedPeripheralUUID == peripheral.id {
-                                Text("Connected")
-                                    .foregroundColor(.green)
-                            } else {
-                                Text("Connect")
+        var body: some View {
+            NavigationView {
+                VStack(alignment: .leading) {
+                    List(bleManager.peripherals) { peripheral in
+                        VStack(alignment: .leading) {
+                            Text(peripheral.name)
+                                .font(.headline)
+                            Text("ID: \(peripheral.id.uuidString)")
+                                .font(.caption)
+                                .foregroundColor(.gray)
+                            HStack {
+                                Text("RSSI: \(peripheral.rssi)")
+                                Spacer()
+                                Button(action: {
+                                    connectToPeripheral(peripheral)
+                                }) {
+                                    if bleManager.connectedPeripheralUUID == peripheral.id {
+                                        Text("Connected")
+                                            .foregroundColor(.green)
+                                    } else {
+                                        Text("Connect")
+                                    }
+                                }
                             }
                         }
+                        .padding(.vertical, 4)
                     }
                 }
-                .sheet(isPresented: $isSheetPresented, onDismiss: {
-                    selectedPeripheral = nil // Reset the selected peripheral
-                    // Optionally restart scanning when sheet is dismissed
-                    // bleManager.startScanning()
-                }) {
-                    if let peripheral = selectedPeripheral {
-                        BLEDetailView(peripheral: peripheral, bleManager: bleManager)
+                .navigationBarTitle("BLE Devices", displayMode: .inline)
+                .navigationBarItems(trailing:
+                    Button(action: {
+                        refreshPeripherals()
+                    }) {
+                        Text("Refresh")
+                    }
+                )
+                .onAppear {
+                    if bleManager.isSwitchedOn {
+                        bleManager.startScanning()
                     }
                 }
             }
-            .navigationBarTitle("BLE Devices", displayMode: .inline)
-            .navigationBarItems(trailing:
-                Button(action: {
-                    refreshPeripherals()
-                }) {
-                    Text("Refresh")
-                }
-            )
-            .onAppear {
-                if bleManager.isSwitchedOn {
-                    bleManager.startScanning()
-                }
+        }
+
+        private func connectToPeripheral(_ peripheral: Peripheral) {
+            bleManager.stopScanning()
+            bleManager.connect(to: peripheral)
+            
+            // Create and save a new sensor with peripheralId
+            let newSensor = Sensor(name: peripheral.name, location: "Unknown", peripheralId: peripheral.id)
+            modelContext.insert(newSensor)
+            
+            // Dismiss the sheet
+            dismiss()
+        }
+
+        private func refreshPeripherals() {
+            bleManager.stopScanning()
+            bleManager.peripherals.removeAll()
+            if bleManager.isSwitchedOn {
+                bleManager.startScanning()
             }
         }
     }
 
-    // Helper function to refresh peripherals
-    private func refreshPeripherals() {
-        bleManager.stopScanning()
-        bleManager.peripherals.removeAll()
-        if bleManager.isSwitchedOn {
-            bleManager.startScanning()
-        }
+    #Preview {
+        BLEDevicesView()
     }
-}
-
-
-#Preview {
-    BLEDevicesView()
-}
-
-
-
-
