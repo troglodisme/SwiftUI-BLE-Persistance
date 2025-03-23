@@ -44,6 +44,12 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     let ledCharacteristicUUID = CBUUID(string: "19B10011-E8F2-537E-4F6C-D104768A1214")
     let buttonCharacteristicUUID = CBUUID(string: "19B10012-E8F2-537E-4F6C-D104768A1214")
 
+    // Add these properties for automatic reading storage
+    @Published var isAutoStoreEnabled = false
+    private var lastStorageTime: Date?
+    private var storageTimer: Timer?
+    private let minimumStorageInterval: TimeInterval = 5 // 5 seconds to match sensor update rate
+
     override init() {
         super.init()
         print("BLEManager initialized")
@@ -110,6 +116,8 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     }
     
     func disconnect() {
+        storageTimer?.invalidate()
+        storageTimer = nil
         if let connectedPeripheral = connectedPeripheral {
             connectionState = .disconnecting
 
@@ -149,6 +157,10 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
             
             connectionState = .disconnected
 
+            // Clean up timer and notifications when disconnecting
+            storageTimer?.invalidate()
+            storageTimer = nil
+            lastStorageTime = nil
         }
     }
     
@@ -238,6 +250,11 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         default:
             break
         }
+        
+        // After updating values, check if we should store
+        if isAutoStoreEnabled {
+            checkAndStoreReadings()
+        }
     }
 
     // Add toggleLED function to write to the LED characteristic, can be made more general for boolean write
@@ -250,5 +267,45 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         let value: UInt8 = on ? 1 : 0 // 1 to turn on, 0 to turn off
         let data = Data([value])
         connectedPeripheral?.writeValue(data, for: ledCharacteristic, type: .withResponse)
+    }
+
+    // Add this method for automatic storage control
+    func toggleAutoStore(enabled: Bool) {
+        isAutoStoreEnabled = enabled
+        if enabled {
+            setupStorageTimer()
+        } else {
+            storageTimer?.invalidate()
+            storageTimer = nil
+        }
+    }
+
+    private func setupStorageTimer() {
+        storageTimer?.invalidate()
+        storageTimer = Timer.scheduledTimer(withTimeInterval: minimumStorageInterval, repeats: true) { [weak self] _ in
+            self?.checkAndStoreReadings()
+        }
+    }
+
+    private func checkAndStoreReadings() {
+        guard isAutoStoreEnabled else {
+            print("Auto-store is disabled")
+            return
+        }
+        
+        if let lastStorage = lastStorageTime,
+           Date().timeIntervalSince(lastStorage) < minimumStorageInterval {
+            print("Too soon to store new reading")
+            return
+        }
+        
+        print("Posting StoreReading notification")
+        NotificationCenter.default.post(
+            name: Notification.Name("StoreReading"),
+            object: nil
+        )
+        
+        lastStorageTime = Date()
+        print("Updated last storage time to: \(lastStorageTime?.description ?? "nil")")
     }
 }

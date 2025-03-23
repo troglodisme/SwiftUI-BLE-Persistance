@@ -11,6 +11,8 @@ import Charts
 
 struct SensorChartView: View {
     let sensor: Sensor
+    let updateTrigger: Bool  // New parameter to force updates
+
     @State private var chartType: ChartType = .pm25
     @State private var timeRange: TimeRange = .hour1
     

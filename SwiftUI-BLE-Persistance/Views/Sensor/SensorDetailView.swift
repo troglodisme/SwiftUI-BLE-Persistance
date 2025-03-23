@@ -21,55 +21,54 @@ struct SensorDetailView: View {
         return connected
     }
     
+    @State private var isAutoStoreEnabled = false
+    @State private var forceChartUpdate = false
+    
+    var autoStoreHelperText: String {
+        if isAutoStoreEnabled {
+            return "Storing readings every 5 seconds"
+        }
+        return ""
+    }
+    
     var body: some View {
         List {
             if !sensor.readings.isEmpty {
                 Section(header: Text("Visualization")) {
-                    SensorChartView(sensor: sensor)
+                    SensorChartView(sensor: sensor, updateTrigger: forceChartUpdate)
                         .listRowInsets(EdgeInsets())
                 }
             }
             
             Section(header: Text("Live Data")) {
                 if isConnected {
-                    Group {
-                        Section(header: Text("Particulate Matter")) {
-                            LiveDataRow(label: "PM1.0", value: bleManager.particulateData.pm1, unit: "μg/m³")
-                            LiveDataRow(label: "PM2.5", value: bleManager.particulateData.pm25, unit: "μg/m³")
-                            LiveDataRow(label: "PM4.0", value: bleManager.particulateData.pm4, unit: "μg/m³")
-                            LiveDataRow(label: "PM10", value: bleManager.particulateData.pm10, unit: "μg/m³")
+                    Section(header: Text("Particulate Matter").bold()) {
+                        LiveDataRow(label: "PM1.0", value: bleManager.particulateData.pm1, unit: "μg/m³", color: .purple)
+                        LiveDataRow(label: "PM2.5", value: bleManager.particulateData.pm25, unit: "μg/m³", color: .purple)
+                        LiveDataRow(label: "PM4.0", value: bleManager.particulateData.pm4, unit: "μg/m³", color: .purple)
+                        LiveDataRow(label: "PM10", value: bleManager.particulateData.pm10, unit: "μg/m³", color: .purple)
+                    }
+                    .listRowBackground(Color.purple.opacity(0.1))
+                    
+                    Section(header: Text("Environmental").bold()) {
+                        LiveDataRow(label: "Temperature", value: bleManager.environmentalData.temperature, unit: "°C", color: .orange)
+                        LiveDataRow(label: "Humidity", value: bleManager.environmentalData.humidity, unit: "%", color: .orange)
+                    }
+                    .listRowBackground(Color.orange.opacity(0.1))
+                    
+                    Section(header: Text("Gas Measurements").bold()) {
+                        LiveDataRow(label: "VOC Index", value: bleManager.gasData.vocIndex, unit: "", color: .green)
+                        LiveDataRow(label: "NOx Index", value: bleManager.gasData.noxIndex, unit: "", color: .green)
+                        LiveDataRow(label: "CO2", value: bleManager.gasData.co2, unit: "ppm", color: .green)
+                    }
+                    .listRowBackground(Color.green.opacity(0.1))
+                    
+                    Section {
+                        Button("Store Reading") {
+                            storeReading()
                         }
-                        
-                        Section(header: Text("Environmental")) {
-                            LiveDataRow(label: "Temperature", value: bleManager.environmentalData.temperature, unit: "°C")
-                            LiveDataRow(label: "Humidity", value: bleManager.environmentalData.humidity, unit: "%")
-                        }
-                        
-                        Section(header: Text("Gas Measurements")) {
-                            LiveDataRow(label: "VOC Index", value: bleManager.gasData.vocIndex, unit: "")
-                            LiveDataRow(label: "NOx Index", value: bleManager.gasData.noxIndex, unit: "")
-                            LiveDataRow(label: "CO2", value: bleManager.gasData.co2, unit: "ppm")
-                        }
-                        
-                        Section {
-                            Button("Store Reading") {
-                                let reading = SensorReading(
-                                    pm1: Double(bleManager.particulateData.pm1),
-                                    pm25: Double(bleManager.particulateData.pm25),
-                                    pm4: Double(bleManager.particulateData.pm4),
-                                    pm10: Double(bleManager.particulateData.pm10),
-                                    temperature: Double(bleManager.environmentalData.temperature),
-                                    humidity: Double(bleManager.environmentalData.humidity),
-                                    vocIndex: Double(bleManager.gasData.vocIndex),
-                                    noxIndex: Double(bleManager.gasData.noxIndex),
-                                    co2: Double(bleManager.gasData.co2)
-                                )
-                                reading.sensor = sensor
-                                sensor.readings.append(reading)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .buttonStyle(.bordered)
-                        }
+                        .frame(maxWidth: .infinity)
+                        .buttonStyle(.bordered)
                     }
                     
                 } else {
@@ -113,36 +112,54 @@ struct SensorDetailView: View {
                 }
             }
             
-            Section(header: Text("Readings")) {
-                ForEach(sensor.readings.sorted(by: { $0.timestamp > $1.timestamp })) { reading in
-                    VStack(alignment: .leading) {
-                        Text("Time: \(reading.timestamp, formatter: itemFormatter)")
-                            .font(.caption)
-                        
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text("PM2.5: \(reading.pm25, specifier: "%.1f") μg/m³")
-                                Text("Temp: \(reading.temperature, specifier: "%.1f")°C")
-                            }
-                            
-                            Spacer()
-                            
-                            VStack(alignment: .trailing) {
-                                Text("Humidity: \(reading.humidity, specifier: "%.1f")%")
-                            }
+//            Section(header: Text("Readings")) {
+//                ForEach(sensor.readings.sorted(by: { $0.timestamp > $1.timestamp })) { reading in
+//                    VStack(alignment: .leading) {
+//                        Text("Time: \(reading.timestamp, formatter: itemFormatter)")
+//                            .font(.caption)
+//                        
+//                        HStack {
+//                            VStack(alignment: .leading) {
+//                                Text("PM2.5: \(reading.pm25, specifier: "%.1f") μg/m³")
+//                                Text("Temp: \(reading.temperature, specifier: "%.1f")°C")
+//                            }
+//                            
+//                            Spacer()
+//                            
+//                            VStack(alignment: .trailing) {
+//                                Text("Humidity: \(reading.humidity, specifier: "%.1f")%")
+//                            }
+//                        }
+//                    }
+//                    .padding(.vertical, 4)
+//                }
+//            }
+            
+            Section {
+                Toggle("Auto-Store Readings", isOn: $isAutoStoreEnabled)
+                    .onChange(of: isAutoStoreEnabled) { newValue in
+                        bleManager.toggleAutoStore(enabled: newValue)
+                        if newValue {
+                            setupNotifications()
                         }
                     }
-                    .padding(.vertical, 4)
+                if isAutoStoreEnabled {
+                    Text(autoStoreHelperText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
             
-            Section {
-                Button("Add Test Reading") {
-                    sensor.addTestReading()
-                }
-                .frame(maxWidth: .infinity)
-                .buttonStyle(.bordered)
-            }
+//            Section {
+//                Button("Add Test Reading") {
+//                    sensor.addTestDescriptiveReading()
+//                }
+//                .frame(maxWidth: .infinity)
+//                .buttonStyle(.bordered)
+//            }
+        }
+        .onChange(of: sensor.readings.count) { _ in
+            forceChartUpdate.toggle()
         }
         .navigationTitle(sensor.name)
         .onDisappear {
@@ -151,20 +168,63 @@ struct SensorDetailView: View {
             }
         }
     }
+    
+    private func setupNotifications() {
+        print("Setting up notifications for auto-store")
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("StoreReading"),
+            object: nil,
+            queue: .main
+        ) { _ in
+            print("Received store reading notification")
+            storeReading()
+        }
+    }
+
+    private func storeReading() {
+        print("Storing reading - Current count: \(sensor.readings.count)")
+        let reading = SensorReading(
+            pm1: Double(bleManager.particulateData.pm1),
+            pm25: Double(bleManager.particulateData.pm25),
+            pm4: Double(bleManager.particulateData.pm4),
+            pm10: Double(bleManager.particulateData.pm10),
+            temperature: Double(bleManager.environmentalData.temperature),
+            humidity: Double(bleManager.environmentalData.humidity),
+            vocIndex: Double(bleManager.gasData.vocIndex),
+            noxIndex: Double(bleManager.gasData.noxIndex),
+            co2: Double(bleManager.gasData.co2)
+        )
+        reading.sensor = sensor
+        sensor.readings.append(reading)
+        print("Reading stored - New count: \(sensor.readings.count)")
+    }
 }
 
 struct LiveDataRow: View {
     let label: String
     let value: Float
     let unit: String
+    let color: Color
+    
+    init(label: String, value: Float, unit: String, color: Color = .blue) {
+        self.label = label
+        self.value = value
+        self.unit = unit
+        self.color = color
+    }
     
     var body: some View {
         HStack {
             Text(label)
+                .foregroundStyle(.secondary)
             Spacer()
-            Text("\(value, specifier: "%.1f") \(unit)")
-                .foregroundColor(.blue)
+            Text("\(value, specifier: "%.1f")")
+                .font(.system(.body, design: .monospaced))
+                .foregroundColor(color)
+            Text(unit)
+                .foregroundStyle(.secondary)
         }
+        .padding(.vertical, 4)
     }
 }
 
