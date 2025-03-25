@@ -82,7 +82,7 @@ void setLedColor(float pm2_5) {
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial);
+  // while (!Serial);
 
   Wire.begin(SDA_PIN, SCL_PIN);
 
@@ -171,7 +171,9 @@ void loop() {
     gasChar.writeValue((uint8_t*)&gas, sizeof(gas));
 
     // Battery
-    float batteryPercent = maxlipo.cellPercent();
+    float batteryPercentRaw = maxlipo.cellPercent();
+    float batteryPercent = constrain(batteryPercentRaw, 0.0, 100.0);
+
     if (!isnan(batteryPercent)) {
       batteryLevelChar.writeValue((uint8_t)constrain(batteryPercent, 0, 100));
     }
