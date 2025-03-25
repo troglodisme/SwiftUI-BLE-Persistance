@@ -44,6 +44,13 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
     let ledCharacteristicUUID = CBUUID(string: "19B10011-E8F2-537E-4F6C-D104768A1214")
     let buttonCharacteristicUUID = CBUUID(string: "19B10012-E8F2-537E-4F6C-D104768A1214")
 
+    // Add Battery Service UUID (standard UUID for Battery Service)
+    let batteryServiceUUID = CBUUID(string: "180F")
+    let batteryCharacteristicUUID = CBUUID(string: "2A19")
+    
+    // Add battery level property
+    @Published var batteryLevel: Int = 0
+
     // Add these properties for automatic reading storage
     @Published var isAutoStoreEnabled = false
     private var lastStorageTime: Date?
@@ -177,6 +184,9 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
                         [particulateCharacteristicUUID, environmentCharacteristicUUID, gasCharacteristicUUID],
                         for: service
                     )
+                } else if service.uuid == batteryServiceUUID {
+                    print("Found Battery Service - discovering characteristics")
+                    peripheral.discoverCharacteristics([batteryCharacteristicUUID], for: service)
                 }
             }
         }
@@ -192,9 +202,15 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
                 print("Found characteristic: \(characteristic.uuid)")
                 if characteristic.uuid == particulateCharacteristicUUID ||
                    characteristic.uuid == environmentCharacteristicUUID ||
-                   characteristic.uuid == gasCharacteristicUUID {
+                   characteristic.uuid == gasCharacteristicUUID ||
+                   characteristic.uuid == batteryCharacteristicUUID {
                     print("Enabling notifications for: \(characteristic.uuid)")
                     peripheral.setNotifyValue(true, for: characteristic)
+                    
+                    // For battery, also read the initial value
+                    if characteristic.uuid == batteryCharacteristicUUID {
+                        peripheral.readValue(for: characteristic)
+                    }
                 }
             }
         }
@@ -205,6 +221,15 @@ class BLEManager: NSObject, ObservableObject, CBCentralManagerDelegate, CBPeriph
         guard let data = characteristic.value else { return }
         
         switch characteristic.uuid {
+        case batteryCharacteristicUUID:
+            if !data.isEmpty {
+                let batteryLevel = Int(data[0])
+                DispatchQueue.main.async {
+                    self.batteryLevel = batteryLevel
+                    print("Battery Level: \(batteryLevel)%")
+                }
+            }
+            
         case particulateCharacteristicUUID:
             if data.count >= 16 { // 4 Float values * 4 bytes each
                 let values = data.withUnsafeBytes { bytes -> (Float, Float, Float, Float) in
