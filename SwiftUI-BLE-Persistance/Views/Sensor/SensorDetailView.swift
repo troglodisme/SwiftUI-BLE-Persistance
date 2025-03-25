@@ -94,10 +94,10 @@ struct SensorDetailView: View {
                 }
             }
             
-            Section(header: Text("BLE Simulation")) {
-                BLESimulationView(sensor: sensor)
-                    .listRowInsets(EdgeInsets())
-            }
+//            Section(header: Text("BLE Simulation")) {
+//                BLESimulationView(sensor: sensor)
+//                    .listRowInsets(EdgeInsets())
+//            }
             
             Section(header: Text("Sensor Info")) {
                 Text("Name: \(sensor.name)")
@@ -109,6 +109,16 @@ struct SensorDetailView: View {
                 } else {
                     Text("No Peripheral ID")
                         .foregroundColor(.red)
+                }
+                
+                // Add battery indicator
+                if isConnected {
+                    HStack {
+                        Image(systemName: getBatterySymbol())
+                            .foregroundColor(getBatteryColor())
+                        Text("Battery: \(bleManager.batteryLevel)%")
+                            .foregroundColor(getBatteryColor())
+                    }
                 }
             }
             
@@ -197,6 +207,34 @@ struct SensorDetailView: View {
         reading.sensor = sensor
         sensor.readings.append(reading)
         print("Reading stored - New count: \(sensor.readings.count)")
+    }
+    
+    private func getBatterySymbol() -> String {
+        let level = bleManager.batteryLevel
+        switch level {
+        case 0...20:
+            return "battery.0"
+        case 21...40:
+            return "battery.25"
+        case 41...60:
+            return "battery.50"
+        case 61...80:
+            return "battery.75"
+        default:
+            return "battery.100"
+        }
+    }
+    
+    private func getBatteryColor() -> Color {
+        let level = bleManager.batteryLevel
+        switch level {
+        case 0...20:
+            return .red
+        case 21...40:
+            return .orange
+        default:
+            return .green
+        }
     }
 }
 

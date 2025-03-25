@@ -11,7 +11,7 @@ import Charts
 
 struct SensorChartView: View {
     let sensor: Sensor
-    let updateTrigger: Bool  // New parameter to force updates
+    let updateTrigger: Bool
 
     @State private var chartType: ChartType = .pm25
     @State private var timeRange: TimeRange = .hour1
@@ -43,86 +43,48 @@ struct SensorChartView: View {
             }
         }
     }
-    
-    var filteredReadings: [SensorReading] {
+
+    private var timeRangeString: String {
+        if timeRange == .all {
+            return "All readings"
+        }
+        let endDate = Date()
+        let startDate = endDate.addingTimeInterval(-timeRange.timeInterval!)
+        return "\(timeFormatter.string(from: startDate)) - \(timeFormatter.string(from: endDate))"
+    }
+
+    private var filteredReadings: [SensorReading] {
         let sortedReadings = sensor.readings.sorted(by: { $0.timestamp < $1.timestamp })
         
         if let interval = timeRange.timeInterval {
-            let cutoffDate = Date().addingTimeInterval(-interval)
-            return sortedReadings.filter { $0.timestamp >= cutoffDate }
+            let currentDate = Date()
+            let cutoffDate = currentDate.addingTimeInterval(-interval)
+            return sortedReadings.filter { reading in
+                reading.timestamp >= cutoffDate && reading.timestamp <= currentDate
+            }
         }
         
         return sortedReadings
     }
     
+    private var processedReadings: [(timestamp: Date, value: Double)] {
+        return filteredReadings.map { ($0.timestamp, valueForReading($0)) }
+    }
+
     var body: some View {
         VStack {
-            // Chart type selector
-            Picker("Chart Type", selection: $chartType) {
-                ForEach(ChartType.allCases) { type in
-                    Text(type.rawValue).tag(type)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
+            ChartControls(
+                chartType: $chartType,
+                timeRange: $timeRange,
+                readingsCount: processedReadings.count,
+                latestReading: processedReadings.last?.timestamp,
+                timeRangeString: timeRangeString
+            )
             
-            // Time range selector
-            Picker("Time Range", selection: $timeRange) {
-                ForEach(TimeRange.allCases) { range in
-                    Text(range.rawValue).tag(range)
-                }
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            
-            if filteredReadings.isEmpty {
-                Text("No data in selected time range")
-                    .foregroundColor(.secondary)
-                    .frame(height: 250)
-            } else {
-                Chart {
-                    ForEach(filteredReadings) { reading in
-                        LineMark(
-                            x: .value("Time", reading.timestamp),
-                            y: .value(yAxisLabel(), valueForReading(reading))
-                        )
-                        .foregroundStyle(colorForChartType())
-                        
-                        PointMark(
-                            x: .value("Time", reading.timestamp),
-                            y: .value(yAxisLabel(), valueForReading(reading))
-                        )
-                        .foregroundStyle(colorForChartType())
-                    }
-                }
-                .frame(height: 250)
-                .padding()
-                .background(Color(.systemBackground))
-                .cornerRadius(8)
-                .shadow(radius: 2)
-                .chartXAxis {
-                    AxisMarks(position: .bottom)
-                }
-                .chartYAxis {
-                    AxisMarks(position: .leading)
-                }
-            }
-            
-            // Reading count info
-            HStack {
-                Text("\(filteredReadings.count) readings")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                
-                Spacer()
-                
-                if let newest = filteredReadings.last?.timestamp {
-                    Text("Latest: \(newest, formatter: timeFormatter)")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
-            .padding(.horizontal)
+            SensorChart(
+                readings: processedReadings,
+                chartType: chartType
+            )
         }
         .padding(.vertical)
         .background(Color(.secondarySystemBackground))
@@ -139,30 +101,7 @@ struct SensorChartView: View {
             return reading.humidity
         }
     }
-    
-    private func yAxisLabel() -> String {
-        switch chartType {
-        case .pm25:
-            return "PM2.5 (μg/m³)"
-        case .temperature:
-            return "Temperature (°C)"
-        case .humidity:
-            return "Humidity (%)"
-        }
-    }
-    
-    private func colorForChartType() -> Color {
-        switch chartType {
-        case .pm25:
-            return .red
-        case .temperature:
-            return .orange
-        case .humidity:
-            return .blue
-        }
-    }
 }
-
 
 private let timeFormatter: DateFormatter = {
     let formatter = DateFormatter()
